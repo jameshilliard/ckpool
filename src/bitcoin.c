@@ -79,7 +79,7 @@ out:
 	return ret;
 }
 
-static const char *gbt_req = "{\"method\": \"getblocktemplate\", \"params\": [{\"capabilities\": [\"coinbasetxn\", \"workid\", \"coinbase/append\"]}]}\n";
+static const char *gbt_req = "{\"method\": \"getblocktemplate\", \"params\": [{\"capabilities\": [\"coinbasetxn\", \"workid\", \"coinbase/append\"], \"rules\": [\"segwit\"]}]}\n";
 
 /* Request getblocktemplate from bitcoind already connected with a connsock_t
  * and then summarise the information to the most efficient set of data
@@ -88,6 +88,7 @@ bool gen_gbtbase(connsock_t *cs, gbtbase_t *gbt)
 {
 	json_t *txn_array, *coinbase_aux, *res_val, *val;
 	const char *previousblockhash;
+	const char *witcommitment;
 	char hash_swap[32], tmp[32];
 	uint64_t coinbasevalue;
 	const char *target;
@@ -119,6 +120,7 @@ bool gen_gbtbase(connsock_t *cs, gbtbase_t *gbt)
 	coinbasevalue = json_integer_value(json_object_get(res_val, "coinbasevalue"));
 	coinbase_aux = json_object_get(res_val, "coinbaseaux");
 	flags = json_string_value(json_object_get(coinbase_aux, "flags"));
+	witcommitment = json_string_value(json_object_get(res_val, "default_witness_commitment"));
 
 	if (unlikely(!previousblockhash || !target || !version || !curtime || !bits || !coinbase_aux || !flags)) {
 		LOGERR("JSON failed to decode GBT %s %s %d %d %s %s", previousblockhash, target, version, curtime, bits, flags);
@@ -165,6 +167,12 @@ bool gen_gbtbase(connsock_t *cs, gbtbase_t *gbt)
 	json_object_set_new_nocheck(gbt->json, "flags", json_string_nocheck(gbt->flags));
 
 	json_object_set_new_nocheck(gbt->json, "transactions", json_deep_copy(txn_array));
+
+	if (witcommitment) {
+		gbt->witcommitment = strdup(witcommitment);
+		json_object_set_new_nocheck(gbt->json, "witcommitment", json_string_nocheck(gbt->witcommitment));
+	}
+
 	ret = true;
 
 out:
@@ -177,6 +185,7 @@ void clear_gbtbase(gbtbase_t *gbt)
 	dealloc(gbt->flags);
 	dealloc(gbt->txn_data);
 	dealloc(gbt->txn_hashes);
+	dealloc(gbt->witcommitment);
 	json_decref(gbt->json);
 	gbt->json = NULL;
 	memset(gbt, 0, sizeof(gbtbase_t));
